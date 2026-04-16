@@ -3,7 +3,8 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import Cube from 'cubejs';
-import { RotateCcw, Play, Square, Shuffle } from 'lucide-react';
+import { RotateCcw, Play, Square, Shuffle, Camera } from 'lucide-react';
+import CameraScanner from './CameraScanner';
 
 const PALETTE = ['white', 'red', 'green', 'yellow', 'orange', 'blue'];
 
@@ -236,6 +237,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [error, setError] = useState('');
   const [solverReady, setSolverReady] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const animationRef = useRef({ active: false, move: '', progress: 0, direction: 1 });
 
@@ -391,6 +393,58 @@ export default function App() {
     setCurrentStep(prev => prev - 1);
   };
 
+  const handleApplyScannedColors = (faceName: string, colors2D: string[][]) => {
+    const offset = (size - 1) / 2;
+    const targetDir = new THREE.Vector3();
+    switch (faceName) {
+      case 'R': targetDir.set(1, 0, 0); break;
+      case 'L': targetDir.set(-1, 0, 0); break;
+      case 'U': targetDir.set(0, 1, 0); break;
+      case 'D': targetDir.set(0, -1, 0); break;
+      case 'F': targetDir.set(0, 0, 1); break;
+      case 'B': targetDir.set(0, 0, -1); break;
+    }
+
+    const newCubies = [...cubies];
+
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        let x = 0, y = 0, z = 0;
+        if (faceName === 'F') { x = c - offset; y = (size - 1 - r) - offset; z = offset; }
+        else if (faceName === 'B') { x = (size - 1 - c) - offset; y = (size - 1 - r) - offset; z = -offset; }
+        else if (faceName === 'R') { x = offset; y = (size - 1 - r) - offset; z = (size - 1 - c) - offset; }
+        else if (faceName === 'L') { x = -offset; y = (size - 1 - r) - offset; z = c - offset; }
+        else if (faceName === 'U') { x = c - offset; y = offset; z = r - offset; }
+        else if (faceName === 'D') { x = c - offset; y = -offset; z = (size - 1 - r) - offset; }
+
+        const pos = new THREE.Vector3(x, y, z);
+        const color = colors2D[r][c];
+
+        const cubieIndex = newCubies.findIndex(cubie => pos.distanceTo(cubie.position) < 0.1);
+
+        if (cubieIndex !== -1) {
+          const cubie = newCubies[cubieIndex];
+          let targetFaceIndex = -1;
+          for (let i = 0; i < 6; i++) {
+            const rotatedNormal = faceNormals[i].clone().applyQuaternion(cubie.quaternion).round();
+            if (rotatedNormal.equals(targetDir)) {
+              targetFaceIndex = i;
+              break;
+            }
+          }
+
+          if (targetFaceIndex !== -1) {
+            const newColors = [...cubie.colors];
+            newColors[targetFaceIndex] = color;
+            newCubies[cubieIndex] = { ...cubie, colors: newColors };
+          }
+        }
+      }
+    }
+    setCubies(newCubies);
+    setShowScanner(false);
+  };
+
   return (
     <div className="flex flex-col h-screen w-full bg-[#f8fafc] text-[#0f172a] font-['Helvetica_Neue',Arial,sans-serif] overflow-hidden">
       {/* Header */}
@@ -430,7 +484,17 @@ export default function App() {
           </div>
 
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#64748b] mb-4">Color Input</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#64748b]">Color Input</h3>
+              <button 
+                onClick={() => setShowScanner(true)}
+                disabled={isAnimating || isPlaying}
+                className="flex items-center gap-1 text-xs font-bold text-[#2563eb] hover:text-[#1d4ed8] disabled:opacity-50 cursor-pointer"
+              >
+                <Camera size={14} />
+                Scan Face
+              </button>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               {PALETTE.map(color => (
                 <button
@@ -574,6 +638,14 @@ export default function App() {
         {solution.length > 0 && <div>Complexity: {solution.length} Moves</div>}
         <div className="ml-auto">v3.2.1-stable</div>
       </div>
+
+      {showScanner && (
+        <CameraScanner 
+          size={size} 
+          onApply={handleApplyScannedColors} 
+          onClose={() => setShowScanner(false)} 
+        />
+      )}
     </div>
   );
 }
