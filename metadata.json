@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Rubiks Cube Solver",
+  "description": "It solves a rubiks cube",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }
