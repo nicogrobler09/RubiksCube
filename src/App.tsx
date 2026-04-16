@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import Cube from 'cubejs';
 import { RotateCcw, Play, Square, Shuffle, Camera } from 'lucide-react';
@@ -59,6 +59,20 @@ const moveDescriptions: Record<string, string> = {
 
 const roundHalf = (n: number) => Math.round(n * 2) / 2;
 const roundVec = (v: THREE.Vector3) => new THREE.Vector3(roundHalf(v.x), roundHalf(v.y), roundHalf(v.z));
+
+const FaceMarkers = ({ size }: { size: number }) => {
+  const d = (size / 2) + 0.8;
+  return (
+    <group>
+      <Text position={[0, 0, d]} fontSize={0.6} color="#0f172a" outlineWidth={0.04} outlineColor="#ffffff">F</Text>
+      <Text position={[0, 0, -d]} fontSize={0.6} color="#0f172a" outlineWidth={0.04} outlineColor="#ffffff" rotation={[0, Math.PI, 0]}>B</Text>
+      <Text position={[d, 0, 0]} fontSize={0.6} color="#0f172a" outlineWidth={0.04} outlineColor="#ffffff" rotation={[0, Math.PI / 2, 0]}>R</Text>
+      <Text position={[-d, 0, 0]} fontSize={0.6} color="#0f172a" outlineWidth={0.04} outlineColor="#ffffff" rotation={[0, -Math.PI / 2, 0]}>L</Text>
+      <Text position={[0, d, 0]} fontSize={0.6} color="#0f172a" outlineWidth={0.04} outlineColor="#ffffff" rotation={[-Math.PI / 2, 0, 0]}>U</Text>
+      <Text position={[0, -d, 0]} fontSize={0.6} color="#0f172a" outlineWidth={0.04} outlineColor="#ffffff" rotation={[Math.PI / 2, 0, 0]}>D</Text>
+    </group>
+  );
+};
 
 type CubieData = {
   id: number;
@@ -252,18 +266,40 @@ export default function App() {
       try {
         const parsedSize = parseInt(savedSize, 10);
         const parsedCubies = JSON.parse(savedCubies);
-        const reconstructedCubies = parsedCubies.map((c: any) => ({
-          ...c,
-          position: new THREE.Vector3(c.position.x, c.position.y, c.position.z),
-          quaternion: new THREE.Quaternion(
-            c.quaternion._x ?? c.quaternion.x, 
-            c.quaternion._y ?? c.quaternion.y, 
-            c.quaternion._z ?? c.quaternion.z, 
-            c.quaternion._w ?? c.quaternion.w
-          )
-        }));
-        setSize(parsedSize);
-        setCubies(reconstructedCubies);
+        let valid = true;
+        const reconstructedCubies = parsedCubies.map((c: any) => {
+          let qx, qy, qz, qw;
+          if (Array.isArray(c.quaternion)) {
+             [qx, qy, qz, qw] = c.quaternion;
+          } else {
+             qx = c.quaternion?._x ?? c.quaternion?.x;
+             qy = c.quaternion?._y ?? c.quaternion?.y;
+             qz = c.quaternion?._z ?? c.quaternion?.z;
+             qw = c.quaternion?._w ?? c.quaternion?.w;
+          }
+          if (qx === undefined || qy === undefined || qz === undefined || qw === undefined) {
+            valid = false;
+          }
+          let px, py, pz;
+          if (Array.isArray(c.position)) {
+             [px, py, pz] = c.position;
+          } else {
+             px = c.position?.x;
+             py = c.position?.y;
+             pz = c.position?.z;
+          }
+          return {
+            ...c,
+            position: new THREE.Vector3(px, py, pz),
+            quaternion: new THREE.Quaternion(qx, qy, qz, qw)
+          };
+        });
+        if (valid) {
+          setSize(parsedSize);
+          setCubies(reconstructedCubies);
+        } else {
+          setCubies(generateCubies(parsedSize || 3));
+        }
       } catch (e) {
         console.error("Failed to load cube state", e);
         setCubies(generateCubies(3));
@@ -276,7 +312,13 @@ export default function App() {
   useEffect(() => {
     if (cubies.length > 0) {
       localStorage.setItem('rubiks-size', size.toString());
-      localStorage.setItem('rubiks-cubies', JSON.stringify(cubies));
+      const serializedCubies = cubies.map(c => ({
+        id: c.id,
+        position: c.position.toArray(),
+        quaternion: c.quaternion.toArray(),
+        colors: c.colors
+      }));
+      localStorage.setItem('rubiks-cubies', JSON.stringify(serializedCubies));
     }
   }, [size, cubies]);
 
@@ -559,6 +601,7 @@ export default function App() {
               animationRef={animationRef}
               onAnimationComplete={() => setIsAnimating(false)}
             />
+            <FaceMarkers size={size} />
             <OrbitControls enablePan={false} minDistance={4} maxDistance={15} />
           </Canvas>
 
